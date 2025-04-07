@@ -1,18 +1,11 @@
 import streamlit as st
-import requests
+import uuid
+import json
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import base64
 
-# Get public IP address
-def get_public_ip():
-    try:
-        ip = requests.get("https://api.ipify.org").text
-        return ip.replace('.', '-')  # Replace dot to make it PeerJS-friendly
-    except:
-        return "unknown"
-
-# AES encryption/decryption
+# Encryption functions
 def generate_key():
     return get_random_bytes(16)
 
@@ -28,14 +21,13 @@ def decrypt_message(key, encrypted_message):
     plaintext = cipher.decrypt_and_verify(ciphertext, tag)
     return plaintext.decode('utf-8')
 
-# Main UI
+# Main application
 def main():
-    st.set_page_config(layout="wide")
-    st.title("🌐 P2P File Sharing & Chat (Distributed IP-Based)")
-
-    # IP as session ID
-    if 'ip_id' not in st.session_state:
-        st.session_state.ip_id = get_public_ip()
+    st.title("P2P File Sharing & Chat System")
+    
+    # Initialize session state
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = None
     if 'key' not in st.session_state:
         st.session_state.key = generate_key()
     if 'messages' not in st.session_state:
@@ -43,69 +35,71 @@ def main():
     if 'file_info' not in st.session_state:
         st.session_state.file_info = None
 
+    # Get the public IP address from query parameters
+    ip = st.query_params.get('ip', None)
+    if ip:
+        st.session_state.session_id = ip
+    else:
+        st.write("Your public IP: waiting...")
+
     # Sidebar for connection
     with st.sidebar:
-        st.header("Connection Info")
-        st.write("📡 Your Device ID (IP):")
-        st.code(st.session_state.ip_id)
-
-        peer_id = st.text_input("Enter Peer’s IP-based ID:")
+        st.header("Connection")
+        if st.session_state.session_id:
+            st.write("Your Session ID:")
+            st.code(st.session_state.session_id)
+        
+        peer_id = st.text_input("Enter Peer's Session ID to connect:")
         if st.button("Connect"):
-            st.session_state.peer_id = peer_id.replace('.', '-')
-            st.success(f"Connecting to {peer_id}")
+            st.session_state.peer_id = peer_id
+            st.success(f"Attempting to connect to {peer_id}")
 
-    col1, col2 = st.columns(2)
-
+    # Main content
+    col1, col2 = st.columns([1, 1])
+    
     with col1:
-        st.header("📁 File Sharing")
-        file = st.file_uploader("Upload a file", type=None)
-        if file:
-            st.session_state.file_info = {
-                "name": file.name,
-                "type": file.type,
-                "size": file.size
+        st.header("File Sharing")
+        uploaded_file = st.file_uploader("Choose a file to share", type=None)
+        if uploaded_file is not None:
+            file_details = {
+                "name": uploaded_file.name,
+                "type": uploaded_file.type,
+                "size": uploaded_file.size
             }
-            st.success(f"{file.name} ready to share!")
-
+            st.session_state.file_info = file_details
+            st.success(f"File '{uploaded_file.name}' ready to share!")
+        
+        if st.session_state.file_info:
+            st.write("File ready to send:")
+            st.json(st.session_state.file_info)
+    
     with col2:
-        st.header("💬 Chat")
-        for msg in st.session_state.messages:
-            st.chat_message(msg["role"]).write(msg["content"])
-
-        if prompt := st.chat_input("Send a message"):
-            encrypted = encrypt_message(st.session_state.key, prompt)
+        st.header("Chat")
+        
+        # Display chat messages
+        for message in st.session_state.messages:
+            st.chat_message(message["role"]).write(message["content"])
+        
+        # Chat input
+        if prompt := st.chat_input("Type your message"):
+            encrypted_msg = encrypt_message(st.session_state.key, prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
-            st.experimental_rerun()
+            st.rerun()  # Updated from experimental_rerun()
 
-    # Inject JS
-    peer_id_js = st.session_state.ip_id
-    connect_id_js = st.session_state.get("peer_id", "")
+    # WebRTC JavaScript integration (removed PeerJS and handling IP in URL)
     st.markdown(
         f"""
-        <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
         <script>
-        const myId = "{peer_id_js}";
-        const peer = new Peer(myId);
-
-        peer.on('open', id => {{
-            console.log("PeerJS ready with ID:", id);
-        }});
-
-        peer.on('connection', conn => {{
-            conn.on('data', data => {{
-                console.log("Received from peer:", data);
-                alert("Peer says: " + data);
+        fetch('https://api.ipify.org?format=json')
+            .then(response => response.json())
+            .then(data => {{
+                const ip = data.ip;
+                const currentParams = new URLSearchParams(window.location.search);
+                if (!currentParams.has('ip')) {{
+                    currentParams.set('ip', ip);
+                    window.location.search = currentParams.toString();
+                }}
             }});
-        }});
-
-        function connectToPeer(peerId) {{
-            const conn = peer.connect(peerId);
-            conn.on('open', () => {{
-                conn.send("Hello from " + myId);
-            }});
-        }}
-
-        {"connectToPeer('" + connect_id_js + "');" if connect_id_js else ""}
         </script>
         """,
         unsafe_allow_html=True
