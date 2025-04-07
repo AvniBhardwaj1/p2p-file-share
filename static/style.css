@@ -1,47 +1,11 @@
 .stChatMessage {
-    padding: 12px;
-    margin-bottom: 8px;
+    background-color: #f3f4f6;
+    padding: 10px;
     border-radius: 8px;
-    background-color: #f0f2f6;
-    max-width: 80%;
-}
-
-.stChatMessageContent {
-    display: flex;
-    flex-direction: column;
+    margin-bottom: 6px;
 }
 
 .stChatMessageRole {
     font-weight: bold;
-    margin-bottom: 4px;
-    color: #1e3a8a;
-}
-
-.stChatMessageText {
-    word-wrap: break-word;
-}
-
-/* File uploader styling */
-.stFileUploader {
-    border: 2px dashed #ccc;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-}
-
-/* Connection status */
-.connection-status {
-    padding: 8px;
-    border-radius: 4px;
-    margin-bottom: 12px;
-}
-
-.connected {
-    background-color: #d1fae5;
-    color: #065f46;
-}
-
-.disconnected {
-    background-color: #fee2e2;
-    color: #b91c1c;
+    color: #2563eb;
 }
