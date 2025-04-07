@@ -1,9 +1,23 @@
 import streamlit as st
 import uuid
-import json
+import requests
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 import base64
+import json
+
+# Function to get the public IP address
+def get_public_ip():
+    url = "https://api.ipify.org?format=json"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json().get('ip')
+    else:
+        return "Error: Unable to fetch IP"
+
+# Generate session ID based on public IP
+def generate_session_id(ip):
+    return ip  # Using public IP as the session ID
 
 # Encryption functions
 def generate_key():
@@ -27,33 +41,26 @@ def main():
     
     # Initialize session state
     if 'session_id' not in st.session_state:
-        st.session_state.session_id = None
+        public_ip = get_public_ip()  # Get the public IP
+        st.session_state.session_id = generate_session_id(public_ip)  # Use IP as session ID
     if 'key' not in st.session_state:
         st.session_state.key = generate_key()
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     if 'file_info' not in st.session_state:
         st.session_state.file_info = None
-
-    # Get the public IP address from query parameters
-    ip = st.query_params.get('ip', None)
-    if ip:
-        st.session_state.session_id = ip
-    else:
-        st.write("Your public IP: waiting...")
-
+    
     # Sidebar for connection
     with st.sidebar:
         st.header("Connection")
-        if st.session_state.session_id:
-            st.write("Your Session ID:")
-            st.code(st.session_state.session_id)
+        st.write("Your Session ID (Public IP):")
+        st.code(st.session_state.session_id)  # Display public IP as session ID
         
         peer_id = st.text_input("Enter Peer's Session ID to connect:")
         if st.button("Connect"):
             st.session_state.peer_id = peer_id
             st.success(f"Attempting to connect to {peer_id}")
-
+    
     # Main content
     col1, col2 = st.columns([1, 1])
     
@@ -85,21 +92,46 @@ def main():
             encrypted_msg = encrypt_message(st.session_state.key, prompt)
             st.session_state.messages.append({"role": "user", "content": prompt})
             st.rerun()  # Updated from experimental_rerun()
-
-    # WebRTC JavaScript integration (removed PeerJS and handling IP in URL)
+    
+    # WebRTC JavaScript integration (Updated to reflect changes)
     st.markdown(
         f"""
+        <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
         <script>
-        fetch('https://api.ipify.org?format=json')
-            .then(response => response.json())
-            .then(data => {{
-                const ip = data.ip;
-                const currentParams = new URLSearchParams(window.location.search);
-                if (!currentParams.has('ip')) {{
-                    currentParams.set('ip', ip);
-                    window.location.search = currentParams.toString();
+        const peer = new Peer('{st.session_state.session_id}');
+        
+        peer.on('connection', (conn) => {{
+            conn.on('data', (data) => {{
+                try {{
+                    const message = JSON.parse(data);
+                    if (message.type === 'chat') {{
+                        // Display received message
+                        const chatContainer = document.querySelector('.stChatMessage');
+                        if (chatContainer) {{
+                            const messageElement = document.createElement('div');
+                            messageElement.className = 'stChatMessage';
+                            messageElement.innerHTML = `
+                                <div class="stChatMessageContent">
+                                    <div class="stChatMessageRole">peer</div>
+                                    <div class="stChatMessageText">${{message.content}}</div>
+                                </div>
+                            `;
+                            chatContainer.appendChild(messageElement);
+                        }}
+                    }}
+                }} catch (e) {{
+                    console.error('Error processing message:', e);
                 }}
             }});
+        }});
+        
+        function connectToPeer(peerId) {{
+            const conn = peer.connect(peerId);
+            return conn;
+        }}
+        
+        // Auto-connect if peer ID is set
+        {f"if ('{st.session_state.get('peer_id', '')}') connectToPeer('{st.session_state.peer_id}');" if st.session_state.get('peer_id') else ""}
         </script>
         """,
         unsafe_allow_html=True
